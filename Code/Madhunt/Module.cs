@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Monocle;
 using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.Madhunt {
@@ -23,6 +24,23 @@ namespace Celeste.Mod.Madhunt {
             Celeste.Instance.Components.Add(transitionComp = new TransitionComponent(Celeste.Instance));
             Celeste.Instance.Components.Add(manager = new Manager(Celeste.Instance));
             manager.OnVerifyRoundStart += VerifyRoundStart;
+        }
+
+        public override void LoadContent(bool firstLoad) {
+            if (firstLoad) {
+                HiderBerryTokenFollower.P_Glow = new ParticleType {
+                    Color = Calc.HexToColor("FF8563"),
+                    Color2 = Calc.HexToColor("FFF4A8"),
+                    ColorMode = ParticleType.ColorModes.Blink,
+                    FadeMode = ParticleType.FadeModes.Late,
+                    LifeMin = 1f,
+                    LifeMax = 1.5f,
+                    Size = 1f,
+                    SpeedMin = 2f,
+                    SpeedMax = 8f,
+                    DirectionRange = 6.283185f
+                };
+            }
         }
 
         public override void Unload() {
@@ -55,5 +73,8 @@ namespace Celeste.Mod.Madhunt {
         }
 
         public static Manager MadhuntManager => Instance.manager;
+
+        public override Type SessionType => typeof(ModuleSession);
+        public static ModuleSession Session => (ModuleSession) Instance._Session;
     }
 }

@@ -44,6 +44,6 @@
   </ItemGroup>
 
   <Target Name="CopyDLL" AfterTargets="Build">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="../.."/>
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="../.." />
   </Target>
 </Project>
