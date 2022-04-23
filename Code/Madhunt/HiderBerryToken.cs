@@ -78,7 +78,6 @@ namespace Celeste.Mod.Madhunt {
                 this.Depth = -1000000;
                 this.state = State.InTransit;
                 this.sprite.Color = inTransitColor;
-                // TODO change sprite
             }
         }
 

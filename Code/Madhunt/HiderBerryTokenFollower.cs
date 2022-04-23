@@ -118,7 +118,7 @@ namespace Celeste.Mod.Madhunt {
                 this.wobble += Engine.DeltaTime * 4f;
                 this.sprite.Y = this.bloom.Y = this.light.Y = (float) Math.Sin(this.wobble) * 2f;
                 int followIndex = this.Follower.FollowIndex;
-                if (this.Follower.Leader != null && this.Follower.DelayTimer <= 0.0 && StrawberryRegistry.IsFirstStrawberry(this)) {
+                if (this.Follower.Leader != null && this.Follower.DelayTimer <= 0.0 && this.IsFirstToken()) {
                     Player entity = this.Follower.Leader.Entity as Player;
                     bool flag = false;
                     if (entity != null && entity.Scene != null && !entity.StrawberriesBlocked) {
@@ -143,6 +143,14 @@ namespace Celeste.Mod.Madhunt {
                 return;
             ParticleType type = HiderBerryTokenFollower.P_Glow;
             this.SceneAs<Level>().ParticlesFG.Emit(type, this.Position + Calc.Random.Range(-Vector2.One * 6f, Vector2.One * 6f));
+        }
+    
+        public bool IsFirstToken() {
+            for (int index = this.Follower.FollowIndex - 1; index >= 0; --index) {
+                Entity entity = this.Follower.Leader.Followers[index].Entity;
+                if (entity is HiderBerryTokenFollower) return false;
+            }
+            return true;
         }
     }
 }
