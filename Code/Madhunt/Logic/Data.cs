@@ -64,20 +64,19 @@ namespace Celeste.Mod.Madhunt {
 
         public DataPlayerInfo EndPlayer;
         public string RoundID;
-        public PlayerRole? WinningRole;
+        public PlayerRole WinningRole;
 
         public override MetaType[] GenerateMeta(DataContext ctx) => new MetaType[] { new MetaPlayerUpdate(EndPlayer) };
         public override void FixupMeta(DataContext ctx) => EndPlayer = Get<MetaPlayerUpdate>(ctx).Player;
 
         protected override void Read(CelesteNetBinaryReader reader) {
             RoundID = reader.ReadNetString();
-            if(reader.ReadBoolean()) WinningRole = (PlayerRole) reader.ReadByte();
+            WinningRole = (PlayerRole) reader.ReadByte();
         }
         
         protected override void Write(CelesteNetBinaryWriter writer) {
             writer.WriteNetString(RoundID);
-            writer.Write(WinningRole.HasValue);
-            if(WinningRole.HasValue) writer.Write((byte) WinningRole);
+            writer.Write((byte) WinningRole);
         }
     }
 
