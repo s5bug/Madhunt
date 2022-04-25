@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+
 using Monocle;
 
 namespace Celeste.Mod.Madhunt {
@@ -13,8 +15,13 @@ namespace Celeste.Mod.Madhunt {
             if(MadhuntModule.CurrentRound != null) {
                 MadhuntRound round = MadhuntModule.CurrentRound;
                 Celeste.Commands.Log($"  ID: {round.Settings.RoundID}");
+                Celeste.Commands.Log($"  tag mode: {round.Settings.tagMode}");
+                Celeste.Commands.Log($"  golden mode: {round.Settings.goldenMode}");
                 Celeste.Commands.Log($"  seed: {round.PlayerSeed}");
                 Celeste.Commands.Log($"  role: {round.PlayerRole}");
+                foreach(PlayerRole role in (PlayerRole[]) Enum.GetValues(typeof(PlayerRole))) {
+                    Celeste.Commands.Log($"  num ghosts [{role}]: {round.GetGhostStates().Where(s => s.State?.role == role).Count()}");
+                }
                 Celeste.Commands.Log($"  is winner: {round.isWinner}");
                 Celeste.Commands.Log($"  skip end check: {round.skipEndCheck}");
             } else Celeste.Commands.Log("  no round");

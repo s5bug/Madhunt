@@ -37,7 +37,8 @@ namespace Celeste.Mod.Madhunt {
             } else {
                 disposeEvt.AddEventHandler(null, netDisposeHook = (Action<object>) (_ => NetClientDisposed()));
             }
-            
+
+            //Install Everest hooks            
             Everest.Events.Level.OnLoadLevel += LevelLoadHook;
             Everest.Events.Level.OnExit += ExitHook;
         }
@@ -46,22 +47,14 @@ namespace Celeste.Mod.Madhunt {
             base.Dispose(disposing);
 
             //Remove hooks
+            if(netInitHook != null) typeof(CelesteNetClientContext).GetEvent("OnInit").RemoveEventHandler(null, netInitHook);
+            netInitHook = null;
+
             if(netDisposeHook != null) typeof(CelesteNetClientContext).GetEvent("OnDispose").RemoveEventHandler(null, netDisposeHook);
             netDisposeHook = null;
             
             Everest.Events.Level.OnLoadLevel -= LevelLoadHook;
             Everest.Events.Level.OnExit -= ExitHook;
-        }
-        
-        private void LevelLoadHook(Level lvl, Player.IntroTypes intro, bool fromLoader) {
-            //Disable save and quit when in a round
-            if(MadhuntModule.CurrentRound != null) lvl.SaveQuitDisabled = true;
-        }
-
-        private void ExitHook(Level lvl, LevelExit exit, LevelExit.Mode mode, Session session, HiresSnow snow) {
-            //Exit the round (if we're in one)
-            curRound?.Stop(returnToLobby: false);
-            curRound = null;
         }
 
         private void NetClientInit(CelesteNetClient client) {
@@ -72,6 +65,17 @@ namespace Celeste.Mod.Madhunt {
         private void NetClientDisposed() {
             //Stop current round (if we have one)
             curRound?.Stop();
+            curRound = null;
+        }
+
+        private void LevelLoadHook(Level lvl, Player.IntroTypes intro, bool fromLoader) {
+            //Disable save and quit when in a round
+            if(MadhuntModule.CurrentRound != null) lvl.SaveQuitDisabled = true;
+        }
+
+        private void ExitHook(Level lvl, LevelExit exit, LevelExit.Mode mode, Session session, HiresSnow snow) {
+            //Exit the round (if we're in one)
+            curRound?.Stop(returnToLobby: false);
             curRound = null;
         }
 
@@ -121,11 +125,16 @@ namespace Celeste.Mod.Madhunt {
     
         public void EndRound(PlayerRole? winnerRole) {
             if(curRound == null) return;
-            curRound.NetClient.SendAndHandle(new DataMadhuntRoundEnd() {
-                EndPlayer = curRound.NetClient.PlayerInfo,
-                RoundID = curRound.Settings.RoundID,
-                WinningRole = winnerRole
-            });
+            if(winnerRole.HasValue) {
+                curRound.NetClient.SendAndHandle(new DataMadhuntRoundEnd() {
+                    EndPlayer = curRound.NetClient.PlayerInfo,
+                    RoundID = curRound.Settings.RoundID,
+                    WinningRole = winnerRole.Value
+                });
+            } else {
+                curRound.Stop();
+                curRound = null;
+            }
         }
 
         public bool IsRoundActive(string id) =>
@@ -136,7 +145,7 @@ namespace Celeste.Mod.Madhunt {
         ?? false;
 
         internal void CheckRoundEnd() {
-            if(curRound?.CheckRoundEnd() ?? false) curRound = null;
+            if(curRound?.DoRoundEndCheck() ?? false) curRound = null;
         }
 
         public void Handle(CelesteNetConnection con, DataMadhuntRoundStart data) {

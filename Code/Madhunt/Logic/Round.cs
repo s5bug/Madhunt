@@ -16,7 +16,6 @@ namespace Celeste.Mod.Madhunt {
         private static Random SEED_RNG = new Random();
 
 #region Hooks
-
         private static Hook ghostPlayerCollisionHook, ghostNameRenderHook;
         
         internal static void Init() {
@@ -37,9 +36,9 @@ namespace Celeste.Mod.Madhunt {
             On.Celeste.Player.Die -= DieHook;
             On.Celeste.Holdable.Pickup -= PickupHook;
             
-            ghostPlayerCollisionHook.Dispose();
+            ghostPlayerCollisionHook?.Dispose();
             ghostPlayerCollisionHook = null;
-            ghostNameRenderHook.Dispose();
+            ghostNameRenderHook?.Dispose();
             ghostNameRenderHook = null;
         }
 
@@ -212,18 +211,17 @@ namespace Celeste.Mod.Madhunt {
             Logger.Log(MadhuntModule.Name, $"Ended seed wait, determined role {PlayerRole} for Madhunt round {Settings.RoundID}");
 
             //Check if the round would immediatly end
-            if(CheckRoundEnd()) return false;
+            if(DoRoundEndCheck()) return false;
 
             //Load into arena
             Session ses = (Celeste.Scene as Level)?.Session;
             if(ses == null) return false;
+
+            spawnedInArena = false;
             sesSnapshot = new SessionSnapshot(ses);
             ses.Keys.Clear();
-            ses.Inventory.DreamDash = true;
-            if(MadhuntModule.Session != null) {
-                MadhuntModule.Session.WonLastRound = false;
-            }
-            spawnedInArena = false;
+            if(MadhuntModule.Session != null) MadhuntModule.Session.WonLastRound = false;
+            UpdateFlags(ses);
             arenaLevel = LoadLevel(ses, Settings.arenaArea, Settings.spawnLevel);
 
             return true;
@@ -246,10 +244,8 @@ namespace Celeste.Mod.Madhunt {
                 Session ses = arenaLevel.Session;
                 sesSnapshot.Apply(ses);
                 ses.RespawnPoint = Settings.lobbySpawnPoint;
-                ses.Inventory.DreamDash = isWinner;
-                if(MadhuntModule.Session != null) {
-                    MadhuntModule.Session.WonLastRound = isWinner;
-                }
+                if(MadhuntModule.Session != null) MadhuntModule.Session.WonLastRound = isWinner;
+                UpdateFlags(ses);
                 LoadLevel(ses, Settings.lobbyArea, Settings.lobbyLevel);
 
                 arenaLevel = null;
@@ -258,7 +254,7 @@ namespace Celeste.Mod.Madhunt {
         }
 
 
-        internal bool CheckRoundEnd() {
+        internal bool DoRoundEndCheck() {
             //Check if there are both hiders and seekers left
             //Skip this check if the round just started
             if(
