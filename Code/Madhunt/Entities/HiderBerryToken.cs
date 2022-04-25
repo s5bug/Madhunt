@@ -41,7 +41,7 @@ namespace Celeste.Mod.Madhunt {
             this.level = scene as Level;
             // TODO make custom sprite
             this.sprite = GFX.SpriteBank.Create("strawberry");
-            if (Module.Session.HiderBerryTokens.Contains(this.ID)) {
+            if (MadhuntModule.Session.HiderBerryTokens.Contains(this.ID)) {
                 this.state = State.Collected;
                 this.sprite.Color = collectedColor;
             } else {
@@ -87,7 +87,7 @@ namespace Celeste.Mod.Madhunt {
         }
         
         public void OnCollect() {
-            Module.Session.HiderBerryTokens.Add(this.ID);
+            MadhuntModule.Session.HiderBerryTokens.Add(this.ID);
             this.Depth = 200;
             this.state = State.Collected;
             this.sprite.Color = collectedColor;
