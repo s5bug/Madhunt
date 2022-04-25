@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Collections.Generic;
 
 using Microsoft.Xna.Framework;
+using MonoMod.RuntimeDetour;
 using Monocle;
 using Celeste.Mod.CelesteNet.Client;
 using Celeste.Mod.CelesteNet.DataTypes;
@@ -14,34 +16,31 @@ namespace Celeste.Mod.Madhunt {
         private static Random SEED_RNG = new Random();
 
 #region Hooks
+
+        private static Hook ghostPlayerCollisionHook, ghostNameRenderHook;
+        
         internal static void Init() {
-            Everest.Events.Level.OnLoadLevel += LevelLoadHook;
-            Everest.Events.Level.OnExit += ExitHook;
             On.Celeste.Level.LoadNewPlayer += PlayerLoadHook;
             On.Celeste.Level.Reload += ReloadHook;
             On.Celeste.Level.EnforceBounds += EnforceBoundsHook;
             On.Celeste.Player.Die += DieHook;
             On.Celeste.Holdable.Pickup += PickupHook;
+            
+            ghostPlayerCollisionHook = new Hook(typeof(Ghost).GetMethod(nameof(Ghost.OnPlayer)), typeof(MadhuntRound).GetMethod(nameof(GhostPlayerCollisionHook), BindingFlags.NonPublic | BindingFlags.Static));
+            ghostNameRenderHook = new Hook(typeof(GhostNameTag).GetMethod(nameof(GhostNameTag.Render)), typeof(MadhuntRound).GetMethod(nameof(GhostNameTagRenderHook), BindingFlags.NonPublic | BindingFlags.Static));
         }
 
         internal static void Uninit() {
-            Everest.Events.Level.OnLoadLevel -= LevelLoadHook;
-            Everest.Events.Level.OnExit -= ExitHook;
             On.Celeste.Level.LoadNewPlayer -= PlayerLoadHook;
             On.Celeste.Level.Reload -= ReloadHook;
             On.Celeste.Level.EnforceBounds -= EnforceBoundsHook;
             On.Celeste.Player.Die -= DieHook;
             On.Celeste.Holdable.Pickup -= PickupHook;
-        }
-
-        private static void LevelLoadHook(Level lvl, Player.IntroTypes intro, bool fromLoader) {
-            //Disable save and quit when in a round
-            if(MadhuntModule.CurrentRound != null) lvl.SaveQuitDisabled = true;
-        }
-
-        private static void ExitHook(Level lvl, LevelExit exit, LevelExit.Mode mode, Session session, HiresSnow snow) {
-            //Exit the round (if we're in one)
-            if(MadhuntModule.CurrentRound != null) MadhuntModule.EndRound(null);
+            
+            ghostPlayerCollisionHook.Dispose();
+            ghostPlayerCollisionHook = null;
+            ghostNameRenderHook.Dispose();
+            ghostNameRenderHook = null;
         }
 
         private static Player PlayerLoadHook(On.Celeste.Level.orig_LoadNewPlayer orig, Vector2 pos, PlayerSpriteMode smode) {
@@ -147,10 +146,21 @@ namespace Celeste.Mod.Madhunt {
                 }
             } else orig(ghost, player);
         }
+        
+        private static void GhostNameTagRenderHook(Action<GhostNameTag> orig, GhostNameTag nameTag) {
+            //Don't render name tags of other roles (if disabled in the settings)
+            MadhuntRound round = MadhuntModule.CurrentRound;
+            if(round != null && round.Settings.hideNames && nameTag.Tracking is Ghost ghost) {
+                PlayerState? ghostState = round.GetGhostState(ghost.PlayerInfo)?.State;
+                if(ghostState?.role != round.State.role) return;
+            }
+            
+            orig(nameTag);
+        }
 #endregion
 
         public readonly RoundSettings Settings;
-        private readonly CelesteNetClient netClient;
+        public readonly CelesteNetClient NetClient;
 
         private int playerSeed;
         private PlayerRole playerRole;
@@ -164,7 +174,7 @@ namespace Celeste.Mod.Madhunt {
 
         internal MadhuntRound(CelesteNetClient client, RoundSettings settings) {
             Settings = settings;
-            netClient = client;
+            NetClient = client;
 
             //Determine seed
             //Query the random number generator a random number of times
@@ -172,7 +182,7 @@ namespace Celeste.Mod.Madhunt {
             do { playerSeed = SEED_RNG.Next(int.MinValue, int.MaxValue); } while(numIter-- > 0);
 
             //Register handlers
-            netClient.Data.RegisterHandlersIn(this);
+            NetClient.Data.RegisterHandlersIn(this);
 
             //Start seed wait
             Logger.Log(MadhuntModule.Name, $"Starting Madhunt round {Settings.RoundID} with seed {playerSeed}");
@@ -190,12 +200,12 @@ namespace Celeste.Mod.Madhunt {
             if(Settings.initialSeekers > 0) {
                 PlayerRole = (GetGhostStates().Count(ghostState => {
                     int ghostSeed = ghostState.State.Value.seed;
-                    return ghostSeed > playerSeed || (ghostSeed == playerSeed && ghostState.Player.ID > netClient.PlayerInfo.ID);
+                    return ghostSeed > playerSeed || (ghostSeed == playerSeed && ghostState.Player.ID > NetClient.PlayerInfo.ID);
                 }) < Settings.initialSeekers) ? PlayerRole.SEEKER : PlayerRole.HIDER;
             } else {
                 PlayerRole = (GetGhostStates().Count(ghostState => {
                     int ghostSeed = ghostState.State.Value.seed;
-                    return ghostSeed > playerSeed || (ghostSeed == playerSeed && ghostState.Player.ID > netClient.PlayerInfo.ID);
+                    return ghostSeed > playerSeed || (ghostSeed == playerSeed && ghostState.Player.ID > NetClient.PlayerInfo.ID);
                 }) < -Settings.initialSeekers) ? PlayerRole.HIDER : PlayerRole.SEEKER;
             }
 
@@ -209,25 +219,37 @@ namespace Celeste.Mod.Madhunt {
             if(ses == null) return false;
             sesSnapshot = new SessionSnapshot(ses);
             ses.Keys.Clear();
-            if(MadhuntModule.Session != null) MadhuntModule.Session.WonLastRound = false;
+            ses.Inventory.DreamDash = true;
+            if(MadhuntModule.Session != null) {
+                MadhuntModule.Session.WonLastRound = false;
+            }
             spawnedInArena = false;
             arenaLevel = LoadLevel(ses, Settings.arenaArea, Settings.spawnLevel);
 
             return true;
         }
 
-        internal void Stop(bool isWinner=false) {
+        internal void Stop(bool isWinner=false, bool returnToLobby=true) {
             Logger.Log(MadhuntModule.Name, $"Stopping Madhunt round {Settings.RoundID} in role {PlayerRole}{(isWinner ? " as winner" : string.Empty)}");
 
             //Unregister handlers
-            netClient.Data.UnregisterHandlersIn(this);
+            NetClient.Data.UnregisterHandlersIn(this);
+
+            //Send player state packet to notify other clients of round exit
+            NetClient.Send(new DataMadhuntStateUpdate() {
+                Player = NetClient.PlayerInfo,
+                State = null
+            });
 
             //Return to lobby
-            if(arenaLevel != null) {
+            if(arenaLevel != null && returnToLobby) {
                 Session ses = arenaLevel.Session;
                 sesSnapshot.Apply(ses);
                 ses.RespawnPoint = Settings.lobbySpawnPoint;
-                if(MadhuntModule.Session != null) MadhuntModule.Session.WonLastRound = isWinner;
+                ses.Inventory.DreamDash = isWinner;
+                if(MadhuntModule.Session != null) {
+                    MadhuntModule.Session.WonLastRound = isWinner;
+                }
                 LoadLevel(ses, Settings.lobbyArea, Settings.lobbyLevel);
 
                 arenaLevel = null;
@@ -285,14 +307,14 @@ namespace Celeste.Mod.Madhunt {
             if(string.IsNullOrEmpty(info.DisplayName)) return null;
 
             //Check ghost state
-            if(!netClient.Data.TryGetBoundRef<DataPlayerInfo, DataMadhuntStateUpdate>(info.ID, out DataMadhuntStateUpdate ghostState)) return null;
+            if(!NetClient.Data.TryGetBoundRef<DataPlayerInfo, DataMadhuntStateUpdate>(info.ID, out DataMadhuntStateUpdate ghostState)) return null;
             if(ghostState.State?.roundID != Settings.RoundID) return null;
             return ghostState;
         }
 
         public IEnumerable<DataMadhuntStateUpdate> GetGhostStates() =>
-            netClient.Data.GetRefs<DataPlayerInfo>()
-            .Where(i => i != netClient.PlayerInfo)
+            NetClient.Data.GetRefs<DataPlayerInfo>()
+            .Where(i => i != NetClient.PlayerInfo)
             .Select(i => GetGhostState(i))
             .Where(s => s != null)
         ;
@@ -309,8 +331,8 @@ namespace Celeste.Mod.Madhunt {
                 if(Celeste.Scene is Level lvl) UpdateFlags(lvl.Session);
 
                 //Send state update packet
-                netClient.Send<DataMadhuntStateUpdate>(new DataMadhuntStateUpdate() {
-                    Player = netClient.PlayerInfo,
+                NetClient.Send<DataMadhuntStateUpdate>(new DataMadhuntStateUpdate() {
+                    Player = NetClient.PlayerInfo,
                     State = State
                 });
 

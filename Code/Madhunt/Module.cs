@@ -20,7 +20,7 @@ namespace Celeste.Mod.Madhunt {
         public override void Load() {
             //Initialize hooks
             MadhuntRound.Init();
-
+            
             unlockedAreasHook = new Hook(typeof(LevelSetStats).GetProperty("UnlockedAreas").GetGetMethod(), (Func<Func<LevelSetStats, int>, LevelSetStats, int>) ((orig, stats) => {
                 if(stats.Name == Name) return stats.MaxArea;
                 return orig(stats);
